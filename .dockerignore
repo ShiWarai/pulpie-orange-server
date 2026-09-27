@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Модель (том Docker)
+model/
+*.safetensors
+
+# IDE / OS
+.cursor/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.git/
+.gitignore
+
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+README.md
+LICENSE

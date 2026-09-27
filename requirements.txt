@@ -1,0 +1,2 @@
+# Локальная установка (CPU). Для CUDA: requirements-cuda.txt
+-r requirements-docker.txt

@@ -1,0 +1,18 @@
+# Конфигурация Pulpie Orange Small
+
+server:
+  host: "0.0.0.0"
+  port: 5000
+
+model:
+  # Локальная копия feyninc/pulpie-orange-small (см. ci/download_model.py)
+  path: "model"
+
+extraction:
+  max_input_bytes: 5000000
+  default_max_tokens: 1024
+  default_device: "auto"
+
+http:
+  # Для загрузки HTML по URL (локальная отладка)
+  ssl_verify: false

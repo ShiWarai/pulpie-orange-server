@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# HF cache / model files (large)
+model/
+.pulpie-model/
+.cache/
+*.safetensors
+
+# Env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.cursor/
+.vs/
+
+# Local output
+_output.md
+test_*.md
+test_*.html
+
+# Coverage
+.coverage
+htmlcov/

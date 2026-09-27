@@ -1,0 +1,5 @@
+# Dev-образ для линта и тестов (не публикуется в GHCR).
+FROM pulpie-orange
+
+COPY requirements-dev.txt .
+RUN pip install --root-user-action=ignore -r requirements-dev.txt

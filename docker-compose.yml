@@ -1,0 +1,41 @@
+# Модель и HF-кэш — именованные тома (не в образе).
+services:
+  pulpie-orange:
+    image: pulpie-orange
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "${RUNNER_UID:-0}:${RUNNER_GID:-0}"
+    container_name: pulpie-orange
+    ports:
+      - "5000:5000"
+    volumes:
+      - pulpie_model:/app/model
+      - pulpie_hf_cache:/app/.cache/huggingface
+    environment:
+      - HF_HOME=/app/.cache/huggingface
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    restart: unless-stopped
+    networks:
+      - pulpie-services-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  pulpie_model:
+  pulpie_hf_cache:
+
+networks:
+  pulpie-services-network:
+    external: true

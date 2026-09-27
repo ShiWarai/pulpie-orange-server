@@ -1,0 +1,6 @@
+# docker compose -f docker-compose.yml -f docker-compose.prod-dev.yml pull && ... up -d
+
+services:
+  pulpie-orange:
+    image: ghcr.io/shiwarai/pulpie-orange:dev
+    build: !reset null

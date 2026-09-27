@@ -1,0 +1,13 @@
+# GPU: Dockerfile.cuda + NVIDIA Container Toolkit.
+services:
+  pulpie-orange:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

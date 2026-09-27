@@ -1,0 +1,19 @@
+services:
+  pulpie-orange-dev:
+    image: pulpie-orange-dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    user: "${RUNNER_UID:-0}:${RUNNER_GID:-0}"
+    volumes:
+      - .:/app
+    environment:
+      - HF_HOME=/app/.cache/huggingface
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    networks:
+      - pulpie-services-network
+
+networks:
+  pulpie-services-network:
+    external: true
