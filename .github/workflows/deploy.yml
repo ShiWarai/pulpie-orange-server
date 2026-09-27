@@ -1,4 +1,4 @@
-name: ML Pipeline - Test
+name: Lint and test
 
 on:
   push:
@@ -59,13 +59,29 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-orange-dev pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
 
-  notify-telegram-on-success:
-    name: Notify Telegram on success
-    if: always() && needs.test.result == 'success'
+  notify-telegram:
+    name: Notify Telegram
     needs: [test]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Send Telegram notification (silent)
+      - name: Checks failed
+        if: needs.test.result != 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Проверки упали*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Коммит: `${{ github.sha }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Checks passed
+        if: needs.test.result == 'success'
         uses: appleboy/telegram-action@v1.0.1
         continue-on-error: true
         with:
@@ -74,26 +90,8 @@ jobs:
           format: markdown
           disable_notification: true
           message: |
-            *Pulpie Orange: пайплайн прошёл успешно*
+            *Проверки прошли*
             Репозиторий: `${{ github.repository }}`
             Ветка: `${{ github.ref_name }}`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-  notify-telegram-on-failure:
-    name: Notify Telegram on failure
-    if: always() && needs.test.result == 'failure'
-    needs: [test]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Telegram notification
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Pulpie Orange: пайплайн упал*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.ref_name }}`
+            Коммит: `${{ github.sha }}`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
