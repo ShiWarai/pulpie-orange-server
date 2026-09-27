@@ -15,8 +15,6 @@ from pulpie.model_utils import extract_item_ids, predictions_to_labels
 from pulpie.reconstruct import extract_main_html
 from pulpie.simplify import simplify
 
-from app.config import AppConfig
-
 
 class ExtractorPool:
     """Один экстрактор на устройство; при смене device пересоздаётся."""
