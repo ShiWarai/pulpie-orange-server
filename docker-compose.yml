@@ -16,6 +16,7 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - HF_TOKEN=${HF_TOKEN}
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - API_KEY=${API_KEY:-}
     restart: unless-stopped
     networks:
       - pulpie-services-network
@@ -25,7 +26,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/v1/health', timeout=5)",
         ]
       interval: 30s
       timeout: 10s

@@ -70,12 +70,23 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 
 ## API
 
+Базовый префикс: `/v1`. Если задан `API_KEY`, все маршруты кроме `GET /v1/health` требуют заголовок `Authorization: Bearer <ключ>`. Пустой ключ оставляет API открытым — так удобно запускать сервис локально.
+
 | Метод | Путь | Описание |
 |-------|------|----------|
-| GET | `/api/health` | Статус сервиса и модели |
-| POST | `/api/extract` | Запуск извлечения (202 + `job_id`) |
-| GET | `/api/status/<job_id>` | Прогресс / результат |
-| POST | `/api/abort/<job_id>` | Отмена задачи |
+| GET | `/v1/health` | Статус сервиса и модели, без ключа |
+| POST | `/v1/extractions` | Запуск извлечения, ответ `202` и `id` |
+| GET | `/v1/extractions/<id>` | Прогресс и результат |
+| POST | `/v1/extractions/<id>/cancel` | Отмена задачи |
+
+```powershell
+curl -s http://localhost:5000/v1/extractions `
+  -H "Authorization: Bearer $env:API_KEY" `
+  -H "Content-Type: application/json" `
+  -d "{\"html\": \"<html><body><p>Привет</p></body></html>\", \"format\": \"markdown\"}"
+```
+
+Тело запроса: ровно одно из полей `html` или `url`, плюс необязательные `device` (`auto` / `cpu` / `cuda`), `max_tokens` и `format` (`markdown` или `html`). Статусы задачи: `running`, `completed`, `cancelled`, `failed`.
 
 ## config.yaml
 
@@ -89,7 +100,11 @@ extraction:
   max_input_bytes: 5000000
   default_max_tokens: 1024
   default_device: "auto"
+api:
+  key: ""
 ```
+
+Переменная окружения `API_KEY` перекрывает `api.key`.
 
 ## Разработка
 

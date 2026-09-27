@@ -16,3 +16,7 @@ extraction:
 http:
   # Для загрузки HTML по URL (локальная отладка)
   ssl_verify: false
+
+api:
+  # Пусто — ключ не требуется. В Docker перекрывается переменной API_KEY.
+  key: ""

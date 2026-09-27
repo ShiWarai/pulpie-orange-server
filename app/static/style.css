@@ -53,7 +53,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
 
 .panel > label { font-weight: 600; margin-bottom: 10px; font-size: 0.9rem; }
 
-textarea, input[type="text"], .source {
+textarea, input[type="text"], input[type="password"], .source {
   width: 100%;
   background: #10131a;
   border: 1px solid var(--border);
@@ -64,7 +64,8 @@ textarea, input[type="text"], .source {
   padding: 12px;
   resize: vertical;
 }
-textarea:focus, input[type="text"]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+textarea:focus, input[type="text"]:focus, input[type="password"]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+#api-key { height: 32px; width: 220px; font-size: 0.8rem; }
 
 #html-input { height: 320px; }
 #url-input { height: 42px; }

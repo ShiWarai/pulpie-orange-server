@@ -83,6 +83,28 @@ function processingState(on) {
 let pollTimer = null;
 let currentJobId = null;
 
+const apiKeyInput = document.getElementById('api-key');
+apiKeyInput.value = localStorage.getItem('pulpie_api_key') || '';
+apiKeyInput.addEventListener('change', () => {
+  localStorage.setItem('pulpie_api_key', apiKeyInput.value.trim());
+});
+
+function apiHeaders(json) {
+  const headers = {};
+  if (json) headers['Content-Type'] = 'application/json';
+  const key = apiKeyInput.value.trim();
+  if (key) headers.Authorization = 'Bearer ' + key;
+  return headers;
+}
+
+function errorMessage(json, fallback) {
+  if (json && json.error) {
+    if (typeof json.error === 'string') return json.error;
+    if (json.error.message) return json.error.message;
+  }
+  return fallback;
+}
+
 async function process() {
   const stats = document.getElementById('stats');
   const out = document.getElementById('output');
@@ -92,7 +114,7 @@ async function process() {
   const data = {
     device: document.getElementById('device-select').value,
     max_tokens: parseInt(document.getElementById('chunk-select').value, 10),
-    as_html: document.getElementById('as-html').checked,
+    format: document.getElementById('as-html').checked ? 'html' : 'markdown',
   };
 
   let source;
@@ -117,20 +139,20 @@ async function process() {
   outSrc.value = '';
 
   try {
-    const res = await fetch('/api/extract', {
+    const res = await fetch('/v1/extractions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders(true),
       body: JSON.stringify(data)
     });
     const json = await res.json();
-    if (!json.job_id) {
-      setStatus(stats, json.error || 'Ошибка запуска задачи', false);
+    if (!json.id) {
+      setStatus(stats, errorMessage(json, 'Ошибка запуска задачи'), false);
       processingState(false);
       setProgress(false);
       return;
     }
-    currentJobId = json.job_id;
-    pollStatus(json.job_id);
+    currentJobId = json.id;
+    pollStatus(json.id);
   } catch (e) {
     setStatus(stats, 'Ошибка сети: ' + e, false);
     processingState(false);
@@ -146,24 +168,33 @@ async function pollStatus(jobId) {
 
   const tick = async () => {
     try {
-      const res = await fetch('/api/status/' + jobId);
+      const res = await fetch('/v1/extractions/' + jobId, { headers: apiHeaders(false) });
       const job = await res.json();
 
       if (currentJobId && currentJobId !== jobId) return;
 
-      if (job.status === 'running') {
-        const prog = job.progress || [0, 0];
-        setProgress(true, prog);
-        pollTimer = setTimeout(tick, 400);
-        return;
-      }
-
-      if (job.status === 'done') {
+      if (!res.ok) {
         clearTimeout(pollTimer);
         currentJobId = null;
         processingState(false);
         setProgress(false);
-        if (job.aborted) {
+        setStatus(stats, errorMessage(job, 'Ошибка запроса'), false);
+        return;
+      }
+
+      if (job.status === 'running') {
+        const prog = job.progress || {};
+        setProgress(true, [prog.processed || 0, prog.total || 0]);
+        pollTimer = setTimeout(tick, 400);
+        return;
+      }
+
+      if (job.status === 'completed' || job.status === 'cancelled') {
+        clearTimeout(pollTimer);
+        currentJobId = null;
+        processingState(false);
+        setProgress(false);
+        if (job.status === 'cancelled') {
           out.innerHTML = '';
           outSrc.value = '';
           setStatus(stats, '⚠ Обработано частично (отменено). kept=' + job.kept + ' | dropped=' + job.dropped, false);
@@ -182,13 +213,13 @@ async function pollStatus(jobId) {
         return;
       }
 
-      if (job.status === 'error') {
+      if (job.status === 'failed') {
         clearTimeout(pollTimer);
         processingState(false);
         setProgress(false);
         out.innerHTML = '';
         outSrc.value = '';
-        setStatus(stats, 'Ошибка: ' + (job.error || 'unknown'), false);
+        setStatus(stats, 'Ошибка: ' + errorMessage(job, 'unknown'), false);
         return;
       }
 
@@ -206,7 +237,10 @@ async function cancelJob() {
   clearTimeout(pollTimer);
   setProgress(true, [1, 0], 'Отмена...');
   try {
-    await fetch('/api/abort/' + currentJobId, { method: 'POST' });
+    await fetch('/v1/extractions/' + currentJobId + '/cancel', {
+      method: 'POST',
+      headers: apiHeaders(false),
+    });
   } catch (e) {}
   pollStatus(currentJobId);
 }

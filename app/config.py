@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,11 +36,17 @@ class HttpConfig:
 
 
 @dataclass(frozen=True)
+class ApiConfig:
+    key: str
+
+
+@dataclass(frozen=True)
 class AppConfig:
     server: ServerConfig
     model: ModelConfig
     extraction: ExtractionConfig
     http: HttpConfig
+    api: ApiConfig
 
 
 def _resolve_path(raw: str) -> Path:
@@ -58,6 +65,8 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     model = data.get("model") or {}
     extraction = data.get("extraction") or {}
     http = data.get("http") or {}
+    api = data.get("api") or {}
+    api_key = os.environ.get("API_KEY", "").strip() or str(api.get("key") or "").strip()
 
     return AppConfig(
         server=ServerConfig(
@@ -71,4 +80,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             default_device=str(extraction.get("default_device", "auto")),
         ),
         http=HttpConfig(ssl_verify=bool(http.get("ssl_verify", False))),
+        api=ApiConfig(key=api_key),
     )
