@@ -1,6 +1,8 @@
+import time
 from dataclasses import replace
 
 from app.config import ApiConfig, load_config
+from app.web import server as server_mod
 from app.web.server import create_app
 
 
@@ -71,3 +73,59 @@ def test_unknown_extraction():
 def test_cancel_unknown_extraction():
     resp = _client().post("/v1/extractions/ext_missing/cancel")
     assert resp.status_code == 404
+
+
+def test_cancel_completed_job_has_no_cancel_requested():
+    client = _client()
+    with server_mod._jobs_lock:
+        server_mod._jobs["ext_done"] = {
+            "status": "done",
+            "output": "ok",
+            "format": "markdown",
+            "kept": 1,
+            "dropped": 0,
+            "device": "cpu",
+            "proc_ms": 1,
+            "progress": [1, 1],
+            "aborted": False,
+            "finished_at": time.time(),
+        }
+    try:
+        resp = client.post("/v1/extractions/ext_done/cancel")
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["status"] == "completed"
+        assert "cancel_requested" not in body
+    finally:
+        with server_mod._jobs_lock:
+            server_mod._jobs.pop("ext_done", None)
+
+
+def test_stale_finished_jobs_are_purged():
+    client = _client()
+    with server_mod._jobs_lock:
+        server_mod._jobs["ext_old"] = {
+            "status": "done",
+            "output": "x",
+            "finished_at": time.time() - server_mod._JOB_TTL_SECONDS * 2,
+        }
+    try:
+        assert client.get("/v1/health").status_code == 200
+        with server_mod._jobs_lock:
+            assert "ext_old" not in server_mod._jobs
+    finally:
+        with server_mod._jobs_lock:
+            server_mod._jobs.pop("ext_old", None)
+
+
+def test_running_job_is_not_purged():
+    client = _client()
+    with server_mod._jobs_lock:
+        server_mod._jobs["ext_running"] = {"status": "running"}
+    try:
+        assert client.get("/v1/health").status_code == 200
+        with server_mod._jobs_lock:
+            assert "ext_running" in server_mod._jobs
+    finally:
+        with server_mod._jobs_lock:
+            server_mod._jobs.pop("ext_running", None)

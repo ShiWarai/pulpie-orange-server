@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,37 @@ _jobs_lock = threading.Lock()
 _DEVICES = {"auto", "cpu", "cuda"}
 _FORMATS = {"markdown", "html"}
 _MAX_TOKENS_LIMIT = 32768
+_JOB_TTL_SECONDS = 3600
+
+
+def _purge_jobs_locked() -> None:
+    now = time.time()
+    stale = [
+        job_id
+        for job_id, job in _jobs.items()
+        if job["status"] != "running"
+        and now - float(job.get("finished_at", now)) > _JOB_TTL_SECONDS
+    ]
+    for job_id in stale:
+        del _jobs[job_id]
+
+
+def _purge_jobs() -> None:
+    with _jobs_lock:
+        _purge_jobs_locked()
+
+
+def _run_job(
+    html: str,
+    extractor: Any,
+    stop_event: threading.Event,
+    job: dict[str, Any],
+    max_tokens: int,
+    as_html: bool,
+) -> None:
+    run_extraction(html, extractor, stop_event, job, max_tokens, as_html)
+    if job["status"] != "running":
+        job["finished_at"] = time.time()
 
 
 def _error(message: str, status: int, error_type: str):
@@ -69,14 +101,15 @@ def _public_job(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def create_app(config: AppConfig) -> Flask:
+def create_app(config: AppConfig, pool: ExtractorPool | None = None) -> Flask:
     app = Flask(
         __name__,
         template_folder=str(_PKG_DIR / "templates"),
         static_folder=str(_PKG_DIR / "static"),
         static_url_path="/static",
     )
-    pool = ExtractorPool(model_path=str(config.model.path))
+    if pool is None:
+        pool = ExtractorPool(model_path=str(config.model.path))
 
     @app.before_request
     def require_api_key():
@@ -92,6 +125,7 @@ def create_app(config: AppConfig) -> Flask:
 
     @app.route("/v1/health")
     def health():
+        _purge_jobs()
         with _jobs_lock:
             running = sum(1 for j in _jobs.values() if j["status"] == "running")
         info: dict[str, Any] = {
@@ -174,9 +208,10 @@ def create_app(config: AppConfig) -> Flask:
         stop_event = threading.Event()
         job["stop_event"] = stop_event
         with _jobs_lock:
+            _purge_jobs_locked()
             _jobs[job_id] = job
         threading.Thread(
-            target=run_extraction,
+            target=_run_job,
             args=(html, extractor, stop_event, job, max_tokens, output_format == "html"),
             daemon=True,
         ).start()
@@ -184,6 +219,7 @@ def create_app(config: AppConfig) -> Flask:
 
     @app.route("/v1/extractions/<job_id>")
     def get_extraction(job_id: str):
+        _purge_jobs()
         with _jobs_lock:
             job = _jobs.get(job_id)
         if not job:
@@ -197,10 +233,13 @@ def create_app(config: AppConfig) -> Flask:
             if not job:
                 return _error("Задача не найдена", 404, "not_found")
             stop_event = job.get("stop_event")
+            cancelled = False
             if stop_event and job["status"] == "running":
                 stop_event.set()
+                cancelled = True
             body = _public_job(job_id, job)
-        body["cancel_requested"] = True
+        if cancelled:
+            body["cancel_requested"] = True
         return jsonify(body)
 
     return app

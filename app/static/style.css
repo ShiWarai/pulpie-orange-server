@@ -26,6 +26,7 @@ header {
   padding: 32px 20px 20px;
 }
 header h1 { font-size: 2rem; }
+header h1 .logo { width: 1.7em; height: 1.7em; vertical-align: -0.4em; margin-right: 8px; }
 .subtitle { color: var(--muted); margin-top: 4px; font-size: 0.9rem; }
 
 main { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }

@@ -34,16 +34,16 @@ def main() -> None:
     host = args.host or config.server.host
     port = args.port or config.server.port
 
+    pool = ExtractorPool(model_path=str(config.model.path))
     if args.warmup:
         device = resolve_device(config.extraction.default_device)
-        pool = ExtractorPool(model_path=str(config.model.path))
         try:
             pool.get(device)
             print(f"Модель загружена ({device}).")
         except Exception as e:
             print("Не удалось загрузить модель:", e, file=sys.stderr)
 
-    app = create_app(config)
+    app = create_app(config, pool=pool)
     print(f"Сервер: http://{host}:{port}")
     print(f"Конфигурация: {args.config}")
     print(f"CUDA доступна: {torch.cuda.is_available()}")

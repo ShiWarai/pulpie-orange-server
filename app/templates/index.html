@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pulpie Orange Small — HTML → Markdown</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <header>
-<h1>🍊 Pulpie Orange Small</h1>
+<h1><img class="logo" src="{{ url_for('static', filename='favicon.svg') }}" alt="🍊"> Pulpie Orange Small</h1>
 <p class="subtitle">Извлечение основного контента из HTML в Markdown (210M, EuroBERT encoder)</p>
 </header>
 
