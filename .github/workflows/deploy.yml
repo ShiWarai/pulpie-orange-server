@@ -8,6 +8,20 @@ on:
   workflow_dispatch:
 
 jobs:
+  publish:
+    name: Publish images
+    needs: [test]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      head_sha: ${{ github.sha }}
+      head_branch: ${{ github.ref_name }}
+    secrets: inherit
+
   test:
     name: Run tests in Docker
     runs-on: ubuntu-latest

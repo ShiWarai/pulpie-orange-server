@@ -1,10 +1,19 @@
 name: Publish Docker image
 
+# workflow_run всегда исполняет файл с ветки по умолчанию (main),
+# поэтому правки на dev никогда не попадали в ран. Этот workflow вызывается
+# из Lint and test того же коммита, который только что прошёл проверки.
 on:
-  workflow_run:
-    workflows: ["Lint and test"]
-    types: [completed]
-    branches: [main, dev]
+  workflow_call:
+    inputs:
+      head_sha:
+        description: SHA коммита, который прошёл Lint and test
+        required: true
+        type: string
+      head_branch:
+        description: Ветка этого коммита
+        required: true
+        type: string
   workflow_dispatch:
 
 permissions:
@@ -14,14 +23,14 @@ permissions:
 
 jobs:
   publish-prod:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: (inputs.head_branch || github.ref_name) == 'main'
     name: Build and push prod to GHCR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.workflow_run.head_sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -44,21 +53,21 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_BASE }}:main
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}
+            ${{ env.IMAGE_BASE }}:${{ inputs.head_sha || github.sha }}
           push: true
           provenance: false
           cache-from: type=gha,scope=pulpie-orange-main
           cache-to: type=gha,mode=max,scope=pulpie-orange-main
 
   publish-dev:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev')
+    if: (inputs.head_branch || github.ref_name) == 'dev'
     name: Build and push dev runtime to GHCR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.workflow_run.head_sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -81,21 +90,21 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_BASE }}:dev
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}
+            ${{ env.IMAGE_BASE }}:${{ inputs.head_sha || github.sha }}
           push: true
           provenance: false
           cache-from: type=gha,scope=pulpie-orange-dev
           cache-to: type=gha,mode=max,scope=pulpie-orange-dev
 
   publish-cuda-prod:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: (inputs.head_branch || github.ref_name) == 'main'
     name: Build and push cuda (prod) to GHCR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.workflow_run.head_sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -115,24 +124,25 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.cuda
-          platforms: linux/amd64,linux/arm64
+          # Официальный pytorch/*cuda* публикуется только под linux/amd64.
+          platforms: linux/amd64
           tags: |
             ${{ env.IMAGE_BASE }}:main-cuda
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}-cuda
+            ${{ env.IMAGE_BASE }}:${{ inputs.head_sha || github.sha }}-cuda
           push: true
           provenance: false
           cache-from: type=gha,scope=pulpie-orange-main-cuda
           cache-to: type=gha,mode=max,scope=pulpie-orange-main-cuda
 
   publish-cuda-dev:
-    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev')
+    if: (inputs.head_branch || github.ref_name) == 'dev'
     name: Build and push cuda (dev) to GHCR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.workflow_run.head_sha || github.ref }}
+          ref: ${{ inputs.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -152,10 +162,11 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.cuda
-          platforms: linux/amd64,linux/arm64
+          # Официальный pytorch/*cuda* публикуется только под linux/amd64.
+          platforms: linux/amd64
           tags: |
             ${{ env.IMAGE_BASE }}:dev-cuda
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}-cuda
+            ${{ env.IMAGE_BASE }}:${{ inputs.head_sha || github.sha }}-cuda
           push: true
           provenance: false
           cache-from: type=gha,scope=pulpie-orange-dev-cuda
@@ -183,8 +194,8 @@ jobs:
           message: |
             *Образ опубликован в GHCR*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main` и `:${{ github.event.workflow_run.head_sha }}`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:main` и `:${{ inputs.head_sha || github.sha }}`
             Образ: `${{ steps.image.outputs.name }}:main`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -200,8 +211,8 @@ jobs:
           message: |
             *Образ опубликован в GHCR*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev` и `:${{ github.event.workflow_run.head_sha }}`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:dev` и `:${{ inputs.head_sha || github.sha }}`
             Образ: `${{ steps.image.outputs.name }}:dev`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -216,8 +227,8 @@ jobs:
           message: |
             *Публикация образа не удалась*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main` и `:${{ github.event.workflow_run.head_sha }}`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:main` и `:${{ inputs.head_sha || github.sha }}`
             Образ: `${{ steps.image.outputs.name }}:main`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -232,8 +243,8 @@ jobs:
           message: |
             *Публикация образа не удалась*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev` и `:${{ github.event.workflow_run.head_sha }}`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:dev` и `:${{ inputs.head_sha || github.sha }}`
             Образ: `${{ steps.image.outputs.name }}:dev`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -249,8 +260,8 @@ jobs:
           message: |
             *GPU-размещение опубликовано в GHCR*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main-cuda` и `:${{ github.event.workflow_run.head_sha }}-cuda`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:main-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
             Образ: `${{ steps.image.outputs.name }}:main-cuda`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -266,8 +277,8 @@ jobs:
           message: |
             *GPU-размещение опубликовано в GHCR*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev-cuda` и `:${{ github.event.workflow_run.head_sha }}-cuda`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:dev-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
             Образ: `${{ steps.image.outputs.name }}:dev-cuda`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -282,8 +293,8 @@ jobs:
           message: |
             *Публикация GPU-образа не удалась*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main-cuda` и `:${{ github.event.workflow_run.head_sha }}-cuda`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:main-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
             Образ: `${{ steps.image.outputs.name }}:main-cuda`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
@@ -298,7 +309,7 @@ jobs:
           message: |
             *Публикация GPU-образа не удалась*
             Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev-cuda` и `:${{ github.event.workflow_run.head_sha }}-cuda`
+            Ветка: `${{ inputs.head_branch || github.ref_name }}`
+            Теги: `:dev-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
             Образ: `${{ steps.image.outputs.name }}:dev-cuda`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
