@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   release-please:
@@ -18,7 +17,8 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          # mode: push — сразу создаёт релизный коммит и тег на main (без PR).
-          # Тег потом подхватывает workflow «Publish Docker image» (push: tags: v*).
-          mode: push
-          release-type: simple
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Тегим прямо на main без Release-PR:
+          # обходит запрет «GitHub Actions не может создавать/аппрувать PR».
+          skip-github-pull-request: true
