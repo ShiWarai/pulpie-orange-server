@@ -1,4 +1,4 @@
-// Tab switching (paste / url / file)
+// Tab switching (paste / file)
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -118,11 +118,7 @@ async function process() {
   };
 
   let source;
-  if (active.dataset.mode === 'url') {
-    source = document.getElementById('url-input').value.trim();
-    if (!source) { setStatus(stats, 'Введите URL', false); return; }
-    data.url = source;
-  } else if (active.dataset.mode === 'file') {
+  if (active.dataset.mode === 'file') {
     const f = document.getElementById('file-input').files[0];
     if (!f) { setStatus(stats, 'Выберите файл', false); return; }
     data.html = await f.text();

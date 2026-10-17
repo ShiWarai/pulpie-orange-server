@@ -31,6 +31,13 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
+    if not config.api.key:
+        print(
+            "ОШИБКА: не задан API-ключ. Установите переменную окружения API_KEY "
+            "или задайте api.key в config.yaml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     host = args.host or config.server.host
     port = args.port or config.server.port
 

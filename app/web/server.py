@@ -14,7 +14,6 @@ from flask import Flask, jsonify, render_template, request
 
 from app.config import AppConfig
 from app.extraction import ExtractorPool, extract_sync, resolve_device, run_extraction
-from app.html_loader import load_html
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
 
@@ -110,11 +109,8 @@ def _prepare_extraction(data: Any, config: AppConfig):
         return None, _error("Ожидается JSON-объект", 400, "invalid_request_error")
 
     html_value = data.get("html")
-    url_value = data.get("url")
-    has_html = isinstance(html_value, str) and bool(html_value.strip())
-    has_url = isinstance(url_value, str) and bool(url_value.strip())
-    if has_html == has_url:
-        return None, _error("Укажите ровно одно из полей: html или url", 400, "invalid_request_error")
+    if not (isinstance(html_value, str) and html_value.strip()):
+        return None, _error("Нужно поле html", 400, "invalid_request_error")
 
     device_name = data.get("device", config.extraction.default_device)
     if device_name not in _DEVICES:
@@ -134,12 +130,7 @@ def _prepare_extraction(data: Any, config: AppConfig):
             "invalid_request_error",
         )
 
-    source = url_value if has_url else html_value
-    source_type = "url" if has_url else "string"
-    try:
-        html = load_html(source, source_type, config.http.ssl_verify)
-    except Exception as e:
-        return None, _error(f"Не удалось загрузить источник: {e}", 400, "invalid_request_error")
+    html = html_value
 
     if len(html.encode("utf-8")) > config.extraction.max_input_bytes:
         return None, _error("HTML больше max_input_bytes", 413, "invalid_request_error")

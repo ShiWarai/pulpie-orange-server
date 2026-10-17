@@ -46,15 +46,15 @@ def test_extract_accepts_bearer_key():
     assert resp.get_json()["error"]["type"] == "invalid_request_error"
 
 
-def test_extract_requires_html_or_url():
+def test_extract_requires_html():
     resp = _client().post("/v1/extractions", json={})
     assert resp.status_code == 400
 
 
-def test_extract_rejects_both_sources():
+def test_extract_ignores_url():
     resp = _client().post(
         "/v1/extractions",
-        json={"html": "<p>x</p>", "url": "https://example.com"},
+        json={"url": "https://example.com"},
     )
     assert resp.status_code == 400
 

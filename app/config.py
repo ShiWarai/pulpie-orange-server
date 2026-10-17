@@ -79,6 +79,6 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             default_max_tokens=int(extraction.get("default_max_tokens", 1024)),
             default_device=str(extraction.get("default_device", "auto")),
         ),
-        http=HttpConfig(ssl_verify=bool(http.get("ssl_verify", False))),
+        http=HttpConfig(ssl_verify=bool(http.get("ssl_verify", True))),
         api=ApiConfig(key=api_key),
     )

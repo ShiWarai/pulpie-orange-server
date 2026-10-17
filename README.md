@@ -71,24 +71,6 @@
 
 Опции: `--host`, `--port`, `--config`, `--debug`, `--warmup`.
 
-### CLI
-
-```powershell
-# Файл
-.venv\Scripts\python.exe -m app.cli page.html
-
-# URL
-.venv\Scripts\python.exe -m app.cli https://example.com
-
-# stdin
-Get-Content page.html | .venv\Scripts\python.exe -m app.cli
-
-.venv\Scripts\python.exe -m app.cli page.html --device cuda
-.venv\Scripts\python.exe -m app.cli page.html --time
-.venv\Scripts\python.exe -m app.cli page.html -o output.md
-.venv\Scripts\python.exe -m app.cli page.html --html
-```
-
 ### Docker
 
 | Сценарий | Команда |
@@ -113,7 +95,7 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 
 ## API
 
-Базовый префикс: `/v1`. Если задан `API_KEY`, все маршруты кроме `GET /v1/health` требуют заголовок `Authorization: Bearer <ключ>`. Пустой ключ оставляет API открытым — так удобно запускать сервис локально.
+Базовый префикс: `/v1`. Все маршруты кроме `GET /v1/health` требуют заголовок `Authorization: Bearer <ключ>`. Ключ обязателен: при пустом `API_KEY`/`api.key` сервер не стартует.
 
 | Метод | Путь | Описание |
 |-------|------|----------|
@@ -129,13 +111,13 @@ curl -s http://localhost:5000/v1/extractions `
   -d "{\"html\": \"<html><body><p>Привет</p></body></html>\", \"format\": \"markdown\"}"
 ```
 
-Тело запроса: ровно одно из полей `html` или `url`, плюс необязательные `device` (`auto` / `cpu` / `cuda`), `max_tokens` и `format` (`markdown` или `html`). Статусы задачи: `running`, `completed`, `cancelled`, `failed`.
+Тело запроса: поле `html` (готовый HTML), плюс необязательные `device` (`auto` / `cpu` / `cuda`), `max_tokens` и `format` (`markdown` или `html`). Статусы задачи: `running`, `completed`, `cancelled`, `failed`.
 
 ## Структура проекта
 
 ```
 pulpie-orange-server/
-├── app/                    # python -m app.main | python -m app.cli
+├── app/                    # python -m app.main
 ├── ci/download_model.py
 ├── tests/
 ├── .github/workflows/
