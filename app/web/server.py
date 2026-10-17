@@ -13,7 +13,7 @@ import torch
 from flask import Flask, jsonify, render_template, request
 
 from app.config import AppConfig
-from app.extraction import ExtractorPool, resolve_device, run_extraction
+from app.extraction import ExtractorPool, extract_sync, resolve_device, run_extraction
 from app.html_loader import load_html
 
 _PKG_DIR = Path(__file__).resolve().parent.parent
@@ -101,6 +101,60 @@ def _public_job(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _prepare_extraction(data: Any, config: AppConfig):
+    """Валидирует тело запроса и загружает источник.
+
+    Возвращает ``(payload, None)`` или ``(None, error_response)``.
+    """
+    if not isinstance(data, dict):
+        return None, _error("Ожидается JSON-объект", 400, "invalid_request_error")
+
+    html_value = data.get("html")
+    url_value = data.get("url")
+    has_html = isinstance(html_value, str) and bool(html_value.strip())
+    has_url = isinstance(url_value, str) and bool(url_value.strip())
+    if has_html == has_url:
+        return None, _error("Укажите ровно одно из полей: html или url", 400, "invalid_request_error")
+
+    device_name = data.get("device", config.extraction.default_device)
+    if device_name not in _DEVICES:
+        return None, _error("device: auto, cpu или cuda", 400, "invalid_request_error")
+
+    output_format = data.get("format", "markdown")
+    if output_format not in _FORMATS:
+        return None, _error("format: markdown или html", 400, "invalid_request_error")
+
+    max_tokens = data.get("max_tokens", config.extraction.default_max_tokens)
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+        return None, _error("max_tokens: целое число", 400, "invalid_request_error")
+    if not 1 <= max_tokens <= _MAX_TOKENS_LIMIT:
+        return None, _error(
+            f"max_tokens: от 1 до {_MAX_TOKENS_LIMIT}",
+            400,
+            "invalid_request_error",
+        )
+
+    source = url_value if has_url else html_value
+    source_type = "url" if has_url else "string"
+    try:
+        html = load_html(source, source_type, config.http.ssl_verify)
+    except Exception as e:
+        return None, _error(f"Не удалось загрузить источник: {e}", 400, "invalid_request_error")
+
+    if len(html.encode("utf-8")) > config.extraction.max_input_bytes:
+        return None, _error("HTML больше max_input_bytes", 413, "invalid_request_error")
+
+    return (
+        {
+            "html": html,
+            "device": device_name,
+            "max_tokens": max_tokens,
+            "format": output_format,
+        },
+        None,
+    )
+
+
 def create_app(config: AppConfig, pool: ExtractorPool | None = None) -> Flask:
     app = Flask(
         __name__,
@@ -149,46 +203,16 @@ def create_app(config: AppConfig, pool: ExtractorPool | None = None) -> Flask:
     @app.route("/v1/extractions", methods=["POST"])
     def create_extraction():
         data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return _error("Ожидается JSON-объект", 400, "invalid_request_error")
+        prepared, err = _prepare_extraction(data, config)
+        if err is not None:
+            return err
 
-        html_value = data.get("html")
-        url_value = data.get("url")
-        has_html = isinstance(html_value, str) and bool(html_value.strip())
-        has_url = isinstance(url_value, str) and bool(url_value.strip())
-        if has_html == has_url:
-            return _error("Укажите ровно одно из полей: html или url", 400, "invalid_request_error")
-
-        device_name = data.get("device", config.extraction.default_device)
-        if device_name not in _DEVICES:
-            return _error("device: auto, cpu или cuda", 400, "invalid_request_error")
-
-        output_format = data.get("format", "markdown")
-        if output_format not in _FORMATS:
-            return _error("format: markdown или html", 400, "invalid_request_error")
-
-        max_tokens = data.get("max_tokens", config.extraction.default_max_tokens)
-        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
-            return _error("max_tokens: целое число", 400, "invalid_request_error")
-        if not 1 <= max_tokens <= _MAX_TOKENS_LIMIT:
-            return _error(
-                f"max_tokens: от 1 до {_MAX_TOKENS_LIMIT}",
-                400,
-                "invalid_request_error",
-            )
-
-        source = url_value if has_url else html_value
-        source_type = "url" if has_url else "string"
-        try:
-            html = load_html(source, source_type, config.http.ssl_verify)
-        except Exception as e:
-            return _error(f"Не удалось загрузить источник: {e}", 400, "invalid_request_error")
-
-        if len(html.encode("utf-8")) > config.extraction.max_input_bytes:
-            return _error("HTML больше max_input_bytes", 413, "invalid_request_error")
+        html = prepared["html"]
+        max_tokens = prepared["max_tokens"]
+        output_format = prepared["format"]
 
         try:
-            extractor = pool.get(resolve_device(device_name))
+            extractor = pool.get(resolve_device(prepared["device"]))
         except Exception as e:
             return _error(f"Не удалось загрузить модель: {e}", 500, "server_error")
 
@@ -216,6 +240,26 @@ def create_app(config: AppConfig, pool: ExtractorPool | None = None) -> Flask:
             daemon=True,
         ).start()
         return jsonify(_public_job(job_id, job)), 202
+
+    @app.route("/v1/extractions/sync", methods=["POST"])
+    def create_extraction_sync():
+        """Извлекает inline и возвращает готовый результат одним ответом (без poll)."""
+        data = request.get_json(silent=True)
+        prepared, err = _prepare_extraction(data, config)
+        if err is not None:
+            return err
+
+        try:
+            job = extract_sync(
+                prepared["html"],
+                pool,
+                resolve_device(prepared["device"]),
+                prepared["max_tokens"],
+                prepared["format"] == "html",
+            )
+        except Exception as e:
+            return _error(f"Не удалось загрузить модель: {e}", 500, "server_error")
+        return jsonify(_public_job("ext_" + uuid.uuid4().hex, job)), 200
 
     @app.route("/v1/extractions/<job_id>")
     def get_extraction(job_id: str):

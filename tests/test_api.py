@@ -129,3 +129,40 @@ def test_running_job_is_not_purged():
     finally:
         with server_mod._jobs_lock:
             server_mod._jobs.pop("ext_running", None)
+
+
+def test_sync_requires_key():
+    client = _client("secret")
+    resp = client.post("/v1/extractions/sync", json={"html": "<p>x</p>"})
+    assert resp.status_code == 401
+    assert resp.get_json()["error"]["type"] == "authentication_error"
+
+
+def test_sync_rejects_missing_source():
+    resp = _client().post("/v1/extractions/sync", json={})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"]["type"] == "invalid_request_error"
+
+
+def test_sync_returns_completed_inline(monkeypatch):
+    def fake_extract_sync(html, pool, device, max_tokens, as_html):
+        return {
+            "status": "done",
+            "output": "ok",
+            "html": "<p>ok</p>",
+            "format": "markdown",
+            "kept": 1,
+            "dropped": 0,
+            "proc_ms": 5,
+            "progress": [1, 1],
+            "aborted": False,
+            "device": "cpu",
+        }
+
+    monkeypatch.setattr(server_mod, "extract_sync", fake_extract_sync)
+    resp = _client().post("/v1/extractions/sync", json={"html": "<p>x</p>"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "completed"
+    assert body["output"] == "ok"
+    assert body["progress"] == {"processed": 1, "total": 1}
