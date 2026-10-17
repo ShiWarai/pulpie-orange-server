@@ -53,6 +53,10 @@ jobs:
           tags: pulpie-orange:latest
           load: true
           push: false
+          # Читаем слой-кэш, который пишет publish (scope совпадает с publish-джобом ветки:
+          # pulpie-orange-main / pulpie-orange-dev). Только read — без cache-to, чтобы
+          # транзиентный "failed to reserve cache" не ронял гейт-джоб.
+          cache-from: type=gha,scope=pulpie-orange-${{ github.ref_name }}
 
       - name: Build dev image
         uses: docker/build-push-action@v6
@@ -64,6 +68,7 @@ jobs:
           tags: pulpie-orange-dev:latest
           load: true
           push: false
+          cache-from: type=gha,scope=pulpie-orange-${{ github.ref_name }}
 
       - name: Lint with ruff
         run: |
