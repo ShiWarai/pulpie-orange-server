@@ -89,8 +89,6 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 .venv\Scripts\python.exe -m app.cli page.html --html
 ```
 
-Опции: `--device` (`auto` / `cpu` / `cuda`), `--max-tokens`, `--html`, `--time`, `-o/--output`, `--config`.
-
 ### Docker
 
 | Сценарий | Команда |
@@ -174,5 +172,3 @@ GPU-образ (`Dockerfile.cuda`) в registry не публикуется — �
 ## Авторские права
 
 Copyright (c) 2026 Shi Warai. Подробности — в [LICENSE](LICENSE).
-
-_Исходный код проекта написан домашней нейросетью (Qwen 3.8 27B)._
