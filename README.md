@@ -8,8 +8,6 @@
 
 Локальный сервис и Docker-образы для [feyninc/pulpie-orange-small](https://huggingface.co/feyninc/pulpie-orange-small) — 210M encoder для извлечения основного контента из HTML.
 
-Репозиторий: [github.com/ShiWarai/pulpie-orange-server](https://github.com/ShiWarai/pulpie-orange-server)
-
 ## Стек технологий
 
 | Категория | Технологии |
@@ -23,18 +21,14 @@
 
 ## Оглавление
 
-| Раздел | Содержание |
-|--------|------------|
-| [Быстрый старт](#быстрый-старт) | Сеть, `.env`, compose |
-| [Установка и запуск](#установка-и-запуск) | Локально, CLI, Docker, GPU |
-| [Модель](#модель) | Веса в `model/` |
-| [API](#api) | `/v1`, ключ, статусы |
-| [Структура проекта](#структура-проекта) | Дерево каталогов |
-| [Тестирование](#тестирование) | ruff, pytest в dev-контейнере |
-| [CI/CD](#cicd) | GHCR, Telegram |
-| [Лицензия](#лицензия) | MIT |
-
----
+- [Быстрый старт](#быстрый-старт)
+- [Установка и запуск](#установка-и-запуск)
+- [Модель](#модель)
+- [API](#api)
+- [Структура проекта](#структура-проекта)
+- [Тестирование](#тестирование)
+- [CI/CD](#cicd)
+- [Лицензия](#лицензия)
 
 ## Быстрый старт
 
@@ -59,8 +53,6 @@
    ```
 
 Веб-UI: **http://localhost:5000**. Контейнер: `pulpie-orange`, порт **5000**. Модель — том `pulpie_model` → `/app/model`.
-
----
 
 ## Установка и запуск
 
@@ -97,6 +89,8 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 .venv\Scripts\python.exe -m app.cli page.html --html
 ```
 
+Опции: `--device` (`auto` / `cpu` / `cuda`), `--max-tokens`, `--html`, `--time`, `-o/--output`, `--config`.
+
 ### Docker
 
 | Сценарий | Команда |
@@ -108,8 +102,6 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 
 `config.yaml`: хост `0.0.0.0`, порт `5000`, модель в `model/`, лимит входа 5 МБ, чанк 1024 токена, устройство `auto`. Переменная `API_KEY` перекрывает `api.key`.
 
----
-
 ## Модель
 
 Скачайте веса [feyninc/pulpie-orange-small](https://huggingface.co/feyninc/pulpie-orange-small) в каталог `model/` (в git не входит):
@@ -120,8 +112,6 @@ Get-Content page.html | .venv\Scripts\python.exe -m app.cli
 ```
 
 В контейнере тот же скрипт: `docker compose run --rm pulpie-orange python /app/ci/download_model.py`.
-
----
 
 ## API
 
@@ -143,8 +133,6 @@ curl -s http://localhost:5000/v1/extractions `
 
 Тело запроса: ровно одно из полей `html` или `url`, плюс необязательные `device` (`auto` / `cpu` / `cuda`), `max_tokens` и `format` (`markdown` или `html`). Статусы задачи: `running`, `completed`, `cancelled`, `failed`.
 
----
-
 ## Структура проекта
 
 ```
@@ -163,16 +151,12 @@ pulpie-orange-server/
 └── docker-compose*.yml
 ```
 
----
-
 ## Тестирование
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-orange-dev ruff check .
 docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-orange-dev pytest tests/ -v --cov=app
 ```
-
----
 
 ## CI/CD
 
@@ -183,10 +167,12 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-o
 
 GPU-образ (`Dockerfile.cuda`) в registry не публикуется — только локальная сборка через `docker-compose.cuda.yml`.
 
----
-
 ## Лицензия
 
-MIT — см. [LICENSE](LICENSE).
+Проект распространяется по лицензии [MIT](https://opensource.org/licenses/MIT).
+
+## Авторские права
+
+Copyright (c) 2026 Shi Warai. Подробности — в [LICENSE](LICENSE).
 
 _Исходный код проекта написан домашней нейросетью (Qwen 3.8 27B)._
