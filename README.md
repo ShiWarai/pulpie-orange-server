@@ -159,11 +159,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-o
 ## CI/CD
 
 - **deploy.yml** — на push/PR в `main` и `dev`: ruff и pytest в Docker (CPU-образ). Workflow в Actions называется **Lint and test**.
-- **publish.yml** — после успешных проверок: образ `ghcr.io/<owner>/pulpie-orange` (`:main` или `:dev` и тег по SHA). В Telegram уходит статус проверок и, после публикации, имя образа и теги.
+- **publish.yml** — вызывается из **Lint and test** после успешных проверок (отдельный run в списке Actions, публикация одна): образ `ghcr.io/<owner>/pulpie-orange` (`:main` или `:dev`, `-cuda`-варианты и теги по SHA). В Telegram — статус проверок и одно сводное сообщение со статусами всех образов.
 
 Перед первым push: в настройках репозитория разрешите **Read and write** для `GITHUB_TOKEN` (пакеты GHCR). Опционально: `TELEGRAM_TOKEN`, `TELEGRAM_TO`.
 
-GPU-образ (`Dockerfile.cuda`) в registry не публикуется — только локальная сборка через `docker-compose.cuda.yml`.
+GPU-образ (`Dockerfile.cuda`) публикуется тегами `:main-cuda` / `:dev-cuda` и `:<sha>-cuda`; базовый `pytorch/*cuda*` существует только для `linux/amd64`, поэтому без arm64-варианта.
 
 ## Лицензия
 

@@ -178,138 +178,56 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Image name
-        id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange" >> "$GITHUB_OUTPUT"
+      - name: Compose summary
+        id: summary
+        run: |
+          base="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange"
+          branch="${{ inputs.head_branch || github.ref_name }}"
+          done=0
+          failed=0
+          lines=""
+          check() {
+            tag="$1"; result="$2"
+            case "$result" in
+              success) lines+="- \`${base}${tag}\` — OK\n"; done=$((done+1)) ;;
+              failure|cancelled) lines+="- \`${base}${tag}\` — ошибка\n"; failed=$((failed+1)) ;;
+            esac
+          }
+          check ":main" "${{ needs.publish-prod.result }}"
+          check ":dev" "${{ needs.publish-dev.result }}"
+          check ":main-cuda" "${{ needs.publish-cuda-prod.result }}"
+          check ":dev-cuda" "${{ needs.publish-cuda-dev.result }}"
+          if [ "$((done + failed))" -eq 0 ]; then
+            echo "Нечего публиковать на этой ветке"
+            exit 0
+          fi
+          if [ "$failed" -gt 0 ]; then
+            title="*Публикация в GHCR не удалась*"
+            silent="false"
+          else
+            title="*Образы опубликованы в GHCR*"
+            silent="true"
+          fi
+          {
+            echo "send=1"
+            echo "silent=$silent"
+            echo "msg<<EOF"
+            echo "$title"
+            echo "Репозиторий: \`${{ github.repository }}\`"
+            echo "Ветка: \`${branch}\`"
+            echo
+            printf '%b' "$lines"
+            echo "[Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Prod image published
-        if: needs.publish-prod.result == 'success'
+      - name: Send to Telegram
+        if: steps.summary.outputs.send == '1'
         uses: appleboy/telegram-action@v1.0.1
         continue-on-error: true
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: markdown
-          disable_notification: true
-          message: |
-            *Образ опубликован в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:main` и `:${{ inputs.head_sha || github.sha }}`
-            Образ: `${{ steps.image.outputs.name }}:main`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev image published
-        if: needs.publish-dev.result == 'success'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          disable_notification: true
-          message: |
-            *Образ опубликован в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:dev` и `:${{ inputs.head_sha || github.sha }}`
-            Образ: `${{ steps.image.outputs.name }}:dev`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Prod publish failed
-        if: needs.publish-prod.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:main` и `:${{ inputs.head_sha || github.sha }}`
-            Образ: `${{ steps.image.outputs.name }}:main`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev publish failed
-        if: needs.publish-dev.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:dev` и `:${{ inputs.head_sha || github.sha }}`
-            Образ: `${{ steps.image.outputs.name }}:dev`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Prod cuda image published
-        if: needs.publish-cuda-prod.result == 'success'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          disable_notification: true
-          message: |
-            *GPU-размещение опубликовано в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:main-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
-            Образ: `${{ steps.image.outputs.name }}:main-cuda`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev cuda image published
-        if: needs.publish-cuda-dev.result == 'success'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          disable_notification: true
-          message: |
-            *GPU-размещение опубликовано в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:dev-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
-            Образ: `${{ steps.image.outputs.name }}:dev-cuda`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Prod cuda publish failed
-        if: needs.publish-cuda-prod.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация GPU-образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:main-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
-            Образ: `${{ steps.image.outputs.name }}:main-cuda`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev cuda publish failed
-        if: needs.publish-cuda-dev.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация GPU-образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ inputs.head_branch || github.ref_name }}`
-            Теги: `:dev-cuda` и `:${{ inputs.head_sha || github.sha }}-cuda`
-            Образ: `${{ steps.image.outputs.name }}:dev-cuda`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          disable_notification: ${{ steps.summary.outputs.silent }}
+          message: ${{ steps.summary.outputs.msg }}
