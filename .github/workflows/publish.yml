@@ -1,26 +1,24 @@
 name: Publish Docker image
 
+# Публикуется только по тегу. Тег режет release-please на мерже в main
+# (см. release-please.yml): обычный тег v1.2.3 -> :main, prerelease-тег
+# v1.2.3-pre.N -> :dev. Ветка уже не триггерит публикацию.
 on:
-  workflow_run:
-    workflows: ["Lint and test"]
-    types: [completed]
-    branches: [main, dev]
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
   packages: write
-  actions: write
 
 jobs:
-  publish-prod:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
-    name: Build and push prod to GHCR
+  publish-cpu:
+    name: Build and push CPU image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -32,32 +30,44 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image name
-        run: echo "IMAGE_BASE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange" >> $GITHUB_ENV
+      - name: Resolve image tags
+        id: tags
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          base="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "cpu_tags<<EOF"
+            echo "${base}:${version}"
+            # prerelease-тег (есть "-" после версии) -> :dev; обычный -> :main + :latest
+            if [[ "$version" == *-* ]]; then
+              echo "${base}:dev"
+            else
+              echo "${base}:main"
+              echo "${base}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push runtime (prod)
+      - name: Build and push CPU
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.IMAGE_BASE }}:main
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}
+          tags: ${{ steps.tags.outputs.cpu_tags }}
           push: true
           provenance: false
-          cache-from: type=gha,scope=pulpie-orange-main
-          cache-to: type=gha,mode=max,scope=pulpie-orange-main
+          cache-from: type=gha,scope=pulpie-orange-cpu
+          cache-to: type=gha,mode=max,scope=pulpie-orange-cpu
 
-  publish-dev:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'dev'
-    name: Build and push dev runtime to GHCR
+  publish-cuda:
+    name: Build and push CUDA image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -69,95 +79,90 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image name
-        run: echo "IMAGE_BASE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange" >> $GITHUB_ENV
+      - name: Resolve image tags
+        id: tags
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          base="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "cuda_tags<<EOF"
+            echo "${base}:${version}-cuda"
+            if [[ "$version" == *-* ]]; then
+              echo "${base}:dev-cuda"
+            else
+              echo "${base}:main-cuda"
+              echo "${base}:latest-cuda"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push runtime (dev tag)
+      - name: Build and push CUDA
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.IMAGE_BASE }}:dev
-            ${{ env.IMAGE_BASE }}:${{ github.event.workflow_run.head_sha }}
+          file: ./Dockerfile.cuda
+          # Официальный pytorch/*cuda* публикуется только под linux/amd64.
+          platforms: linux/amd64
+          tags: ${{ steps.tags.outputs.cuda_tags }}
           push: true
           provenance: false
-          cache-from: type=gha,scope=pulpie-orange-dev
-          cache-to: type=gha,mode=max,scope=pulpie-orange-dev
+          cache-from: type=gha,scope=pulpie-orange-cuda
+          cache-to: type=gha,mode=max,scope=pulpie-orange-cuda
 
   notify-telegram:
     name: Notify Telegram
-    needs: [publish-prod, publish-dev]
+    needs: [publish-cpu, publish-cuda]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Image name
-        id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange" >> "$GITHUB_OUTPUT"
+      - name: Compose summary
+        id: summary
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          base="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange"
+          if [[ "$version" == *-* ]]; then kind="prerelease"; else kind="release"; fi
+          cpu="${{ needs.publish-cpu.result }}"
+          cuda="${{ needs.publish-cuda.result }}"
+          failed=0
+          lines=""
+          case "$cpu" in
+            success) lines+="- \`${base}:${version}\` (CPU) — OK\n" ;;
+            *) lines+="- CPU — ошибка\n"; failed=1 ;;
+          esac
+          case "$cuda" in
+            success) lines+="- \`${base}:${version}-cuda\` (CUDA) — OK\n" ;;
+            *) lines+="- CUDA — ошибка\n"; failed=1 ;;
+          esac
+          if [ "$failed" -gt 0 ]; then
+            title="*Публикация в GHCR не удалась*"
+            silent="false"
+          else
+            title="*Образы опубликованы в GHCR (${kind})*"
+            silent="true"
+          fi
+          {
+            echo "send=1"
+            echo "silent=$silent"
+            echo "msg<<EOF"
+            echo "$title"
+            echo "Репозиторий: \`${{ github.repository }}\`"
+            echo "Тег: \`${tag}\`"
+            echo
+            printf '%b' "$lines"
+            echo "[Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Prod image published
-        if: needs.publish-prod.result == 'success'
+      - name: Send to Telegram
+        if: steps.summary.outputs.send == '1'
         uses: appleboy/telegram-action@v1.0.1
         continue-on-error: true
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           format: markdown
-          disable_notification: true
-          message: |
-            *Образ опубликован в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main` и `:${{ github.event.workflow_run.head_sha }}`
-            Образ: `${{ steps.image.outputs.name }}:main`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev image published
-        if: needs.publish-dev.result == 'success'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          disable_notification: true
-          message: |
-            *Образ опубликован в GHCR*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev` и `:${{ github.event.workflow_run.head_sha }}`
-            Образ: `${{ steps.image.outputs.name }}:dev`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Prod publish failed
-        if: needs.publish-prod.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:main` и `:${{ github.event.workflow_run.head_sha }}`
-            Образ: `${{ steps.image.outputs.name }}:main`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-      - name: Dev publish failed
-        if: needs.publish-dev.result == 'failure'
-        uses: appleboy/telegram-action@v1.0.1
-        continue-on-error: true
-        with:
-          to: ${{ secrets.TELEGRAM_TO }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: markdown
-          message: |
-            *Публикация образа не удалась*
-            Репозиторий: `${{ github.repository }}`
-            Ветка: `${{ github.event.workflow_run.head_branch }}`
-            Теги: `:dev` и `:${{ github.event.workflow_run.head_sha }}`
-            Образ: `${{ steps.image.outputs.name }}:dev`
-            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          disable_notification: ${{ steps.summary.outputs.silent }}
+          message: ${{ steps.summary.outputs.msg }}

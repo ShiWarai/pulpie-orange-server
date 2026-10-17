@@ -1,9 +1,10 @@
 name: Lint and test
 
+# Только push в long-lived ветки: коммит — главный триггер. pull_request убран,
+# иначе push в dev + открытый PR dev->main гоняли весь пайплайн дважды.
+# Публикация образов больше здесь не происходит — её режет тег (см. release-please.yml).
 on:
   push:
-    branches: [main, dev]
-  pull_request:
     branches: [main, dev]
   workflow_dispatch:
 
@@ -39,6 +40,9 @@ jobs:
           tags: pulpie-orange:latest
           load: true
           push: false
+          # Читаем слой-кэш, который пишет publish-cpu (scope=pulpie-orange-cpu, тот же Dockerfile).
+          # Только read — без cache-to, чтобы транзиентный "failed to reserve cache" не ронял гейт.
+          cache-from: type=gha,scope=pulpie-orange-cpu
 
       - name: Build dev image
         uses: docker/build-push-action@v6
@@ -50,6 +54,8 @@ jobs:
           tags: pulpie-orange-dev:latest
           load: true
           push: false
+          # Базовые слои (FROM pulpie-orange) берутся из того же кэша CPU-образа.
+          cache-from: type=gha,scope=pulpie-orange-cpu
 
       - name: Lint with ruff
         run: |

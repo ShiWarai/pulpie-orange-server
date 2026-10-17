@@ -3,6 +3,8 @@ torch>=2.1
 transformers>=4.45
 huggingface-hub>=0.34
 pulpie>=0.0.2
+# pulpie использует deprecated modest-бэкенд selectolax.parser (убран в 1.0)
+selectolax>=0.4,<1.0
 html2text>=2024.1.1
 Flask>=3.0
 pyyaml>=6.0

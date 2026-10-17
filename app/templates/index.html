@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pulpie Orange Small — HTML → Markdown</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <header>
-<h1>🍊 Pulpie Orange Small</h1>
+<h1><img class="logo" src="{{ url_for('static', filename='favicon.svg') }}" alt="🍊"> Pulpie Orange Small</h1>
 <p class="subtitle">Извлечение основного контента из HTML в Markdown (210M, EuroBERT encoder)</p>
 </header>
 
@@ -18,16 +19,11 @@
 <label>Источник HTML</label>
 <div class="tabs">
 <button class="tab active" data-mode="paste">Вставить</button>
-<button class="tab" data-mode="url">URL</button>
 <button class="tab" data-mode="file">Файл</button>
 </div>
 
 <div class="tab-body active" id="body-paste">
-<textarea id="html-input" placeholder="Вставьте HTML-код страницы..."></textarea>
-</div>
-
-<div class="tab-body" id="body-url">
-<input id="url-input" type="text" placeholder="https://example.com" />
+<textarea id="html-input" autocomplete="off" placeholder="Вставьте HTML-код страницы..."></textarea>
 </div>
 
 <div class="tab-body" id="body-file">
@@ -45,6 +41,10 @@
 </label>
 <label class="opt">
 <input type="checkbox" id="as-html"> Вывести HTML вместо MD
+</label>
+<label class="device">
+API-ключ:
+<input id="api-key" type="password" autocomplete="off" placeholder="если задан API_KEY" />
 </label>
 <label class="device">
 Размер чанка (tok):
@@ -76,15 +76,10 @@
 <div id="output-wrap">
 <pre id="output" class="preview"></pre>
 </div>
-<textarea id="output-source" class="source" style="display:none"></textarea>
+<textarea id="output-source" class="source" autocomplete="off" style="display:none"></textarea>
 </div>
 </div>
 </main>
-
-<footer>
-<p>Pulpie Orange Small · EuroBERT encoder · модель одна на все запросы, VRAM стабилен</p>
-<p class="subtitle">Исходный код написан домашней нейросетью (Qwen 3.8 27B)</p>
-</footer>
 
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
