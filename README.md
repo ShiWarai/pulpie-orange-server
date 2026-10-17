@@ -139,8 +139,11 @@ pulpie-orange-server/
 ├── ci/download_model.py
 ├── tests/
 ├── .github/workflows/
-│   ├── deploy.yml
-│   └── publish.yml
+│   ├── deploy.yml          # гейт: ruff + pytest на push
+│   ├── release-please.yml  # режет тег на мерже в main
+│   └── publish.yml         # публикует образы по тегу
+├── release-please-config.json
+├── .release-please-manifest.json
 ├── config.yaml
 ├── model/                  # веса (не в git)
 ├── Dockerfile              # CPU → GHCR
@@ -158,12 +161,22 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-o
 
 ## CI/CD
 
-- **deploy.yml** — на push/PR в `main` и `dev`: ruff и pytest в Docker (CPU-образ). Workflow в Actions называется **Lint and test**.
-- **publish.yml** — вызывается из **Lint and test** после успешных проверок (отдельный run в списке Actions, публикация одна): образ `ghcr.io/<owner>/pulpie-orange` (`:main` или `:dev`, `-cuda`-варианты и теги по SHA). В Telegram — статус проверок и одно сводное сообщение со статусами всех образов.
+Три workflow, каждый отвечает за свой этап — без дублирующих запусков:
 
-Перед первым push: в настройках репозитория разрешите **Read and write** для `GITHUB_TOKEN` (пакеты GHCR). Опционально: `TELEGRAM_TOKEN`, `TELEGRAM_TO`.
+- **deploy.yml** (**Lint and test**) — гейт. На каждый `push` в `main` и `dev`: ruff и pytest в Docker. Публикацию не делает. `pull_request` намеренно не триггерит (иначе push в `dev` + открытый PR `dev→main` гоняли пайплайн дважды).
+- **release-please.yml** — на `push` в `main` (то есть на мерж) режет тег по conventional-коммитам: обычный → `v1.2.3`, с маркером `[prerelease]` в коммите → `v1.2.3-pre.N`. Ведёт версию (`0.1.0` в `.release-please-manifest.json`) и `CHANGELOG.md`.
+- **publish.yml** — публикует образы **только по тегу** `v*`. Prerelease-тег → `:dev` (+ `:<версия>`, `-cuda`), обычный тег → `:main` + `:latest` (+ `:<версия>`, `-cuda`). В Telegram — одно сводное сообщение со статусами CPU и CUDA.
 
-GPU-образ (`Dockerfile.cuda`) публикуется тегами `:main-cuda` / `:dev-cuda` и `:<sha>-cuda`; базовый `pytorch/*cuda*` существует только для `linux/amd64`, поэтому без arm64-варианта.
+Схема тегов образов:
+
+| Тег | CPU | CUDA |
+|-----|-----|------|
+| `v1.2.3` (release) | `:1.2.3`, `:main`, `:latest` | `:1.2.3-cuda`, `:main-cuda`, `:latest-cuda` |
+| `v1.2.3-pre.1` (prerelease) | `:1.2.3-pre.1`, `:dev` | `:1.2.3-pre.1-cuda`, `:dev-cuda` |
+
+Перед первым push: в настройках репозитория разрешите **Read and write** для `GITHUB_TOKEN` (пакеты GHCR + тег). Опционально: `TELEGRAM_TOKEN`, `TELEGRAM_TO`.
+
+GPU-образ (`Dockerfile.cuda`) публикуется вместе с CPU тем же тегом; базовый `pytorch/*cuda*` существует только для `linux/amd64`, поэтому без arm64-варианта.
 
 ## Лицензия
 

@@ -1,27 +1,14 @@
 name: Lint and test
 
+# Только push в long-lived ветки: коммит — главный триггер. pull_request убран,
+# иначе push в dev + открытый PR dev->main гоняли весь пайплайн дважды.
+# Публикация образов больше здесь не происходит — её режет тег (см. release-please.yml).
 on:
   push:
-    branches: [main, dev]
-  pull_request:
     branches: [main, dev]
   workflow_dispatch:
 
 jobs:
-  publish:
-    name: Publish images
-    needs: [test]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-    permissions:
-      contents: read
-      packages: write
-      actions: write
-    uses: ./.github/workflows/publish.yml
-    with:
-      head_sha: ${{ github.sha }}
-      head_branch: ${{ github.ref_name }}
-    secrets: inherit
-
   test:
     name: Run tests in Docker
     runs-on: ubuntu-latest
@@ -53,10 +40,9 @@ jobs:
           tags: pulpie-orange:latest
           load: true
           push: false
-          # Читаем слой-кэш, который пишет publish (scope совпадает с publish-джобом ветки:
-          # pulpie-orange-main / pulpie-orange-dev). Только read — без cache-to, чтобы
-          # транзиентный "failed to reserve cache" не ронял гейт-джоб.
-          cache-from: type=gha,scope=pulpie-orange-${{ github.ref_name }}
+          # Читаем слой-кэш, который пишет publish-cpu (scope=pulpie-orange-cpu, тот же Dockerfile).
+          # Только read — без cache-to, чтобы транзиентный "failed to reserve cache" не ронял гейт.
+          cache-from: type=gha,scope=pulpie-orange-cpu
 
       - name: Build dev image
         uses: docker/build-push-action@v6
@@ -68,7 +54,8 @@ jobs:
           tags: pulpie-orange-dev:latest
           load: true
           push: false
-          cache-from: type=gha,scope=pulpie-orange-${{ github.ref_name }}
+          # Базовые слои (FROM pulpie-orange) берутся из того же кэша CPU-образа.
+          cache-from: type=gha,scope=pulpie-orange-cpu
 
       - name: Lint with ruff
         run: |
