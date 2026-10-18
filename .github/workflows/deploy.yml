@@ -2,11 +2,22 @@ name: Lint and test
 
 # Только push в long-lived ветки: коммит — главный триггер. pull_request убран,
 # иначе push в dev + открытый PR dev->main гоняли весь пайплайн дважды.
-# Публикация образов больше здесь не происходит — её режет тег (см. release-please.yml).
+# Публикация main — отдельный workflow по workflow_run (см. publish.yml),
+# как в video-descriptor-rkllm. Теги semver и release-please не используются.
 on:
   push:
     branches: [main, dev]
   workflow_dispatch:
+    inputs:
+      publish_dev:
+        description: "Собрать и опубликовать dev-образы в GHCR (теги :dev, :dev-cuda)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   test:
@@ -40,7 +51,7 @@ jobs:
           tags: pulpie-orange:latest
           load: true
           push: false
-          # Читаем слой-кэш, который пишет publish-cpu (scope=pulpie-orange-cpu, тот же Dockerfile).
+          # Читаем слой-кэш, который пишут CPU-публикации (scope=pulpie-orange-cpu, тот же Dockerfile).
           # Только read — без cache-to, чтобы транзиентный "failed to reserve cache" не ронял гейт.
           cache-from: type=gha,scope=pulpie-orange-cpu
 
@@ -65,9 +76,67 @@ jobs:
         run: |
           docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-orange-dev pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
 
+  publish-dev:
+    name: Publish dev images to GHCR
+    needs: test
+    if: |
+      needs.test.result == 'success' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_dev == 'true') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/dev' && contains(github.event.head_commit.message, '[prerelease]'))
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pulpie-orange" >> $GITHUB_ENV
+
+      - name: Build and push CPU (dev)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:dev
+            ${{ env.IMAGE }}:${{ github.sha }}
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=pulpie-orange-cpu
+          cache-to: type=gha,mode=max,scope=pulpie-orange-cpu
+
+      - name: Build and push CUDA (dev)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.cuda
+          # Официальный pytorch/*cuda* публикуется только под linux/amd64.
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE }}:dev-cuda
+            ${{ env.IMAGE }}:${{ github.sha }}-cuda
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=pulpie-orange-cuda
+          cache-to: type=gha,mode=max,scope=pulpie-orange-cuda
+
   notify-telegram:
     name: Notify Telegram
-    needs: [test]
+    needs: [test, publish-dev]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -86,8 +155,39 @@ jobs:
             Коммит: `${{ github.sha }}`
             [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-      - name: Checks passed
-        if: needs.test.result == 'success'
+      - name: Checks OK, dev publish failed
+        if: needs.test.result == 'success' && needs.publish-dev.result == 'failure'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Проверки прошли, dev-образы не опубликованы*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Коммит: `${{ github.sha }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Checks OK, dev published
+        if: needs.test.result == 'success' && needs.publish-dev.result == 'success'
+        uses: appleboy/telegram-action@v1.0.1
+        continue-on-error: true
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          disable_notification: true
+          message: |
+            *Проверки и dev-публикация успешны*
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Теги: `:dev`, `:dev-cuda` и `:${{ github.sha }}`
+            [Открыть run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Checks OK (no dev publish)
+        if: needs.test.result == 'success' && needs.publish-dev.result == 'skipped'
         uses: appleboy/telegram-action@v1.0.1
         continue-on-error: true
         with:
