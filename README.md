@@ -121,11 +121,8 @@ pulpie-orange-server/
 ├── ci/download_model.py
 ├── tests/
 ├── .github/workflows/
-│   ├── deploy.yml          # гейт: ruff + pytest на push
-│   ├── release-please.yml  # режет тег на мерже в main
-│   └── publish.yml         # публикует образы по тегу
-├── release-please-config.json
-├── .release-please-manifest.json
+│   ├── deploy.yml          # гейт: ruff + pytest на push + публикация :dev
+│   └── publish.yml         # публикация :main/:latest после зелёного гейта (workflow_run)
 ├── config.yaml
 ├── model/                  # веса (не в git)
 ├── Dockerfile              # CPU → GHCR
@@ -143,20 +140,19 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm pulpie-o
 
 ## CI/CD
 
-Три workflow, каждый отвечает за свой этап — без дублирующих запусков:
+Два workflow, каждый отвечает за свой этап — без тегов, PR и дублирующих запусков:
 
-- **deploy.yml** (**Lint and test**) — гейт. На каждый `push` в `main` и `dev`: ruff и pytest в Docker. Публикацию не делает. `pull_request` намеренно не триггерит (иначе push в `dev` + открытый PR `dev→main` гоняли пайплайн дважды).
-- **release-please.yml** — на `push` в `main` (то есть на мерж) режет тег по conventional-коммитам: обычный → `v1.2.3`, с маркером `[prerelease]` в коммите → `v1.2.3-pre.N`. Ведёт версию (`0.1.0` в `.release-please-manifest.json`) и `CHANGELOG.md`.
-- **publish.yml** — публикует образы **только по тегу** `v*`. Prerelease-тег → `:dev` (+ `:<версия>`, `-cuda`), обычный тег → `:main` + `:latest` (+ `:<версия>`, `-cuda`). В Telegram — одно сводное сообщение со статусами CPU и CUDA.
+- **deploy.yml** (**Lint and test**) — гейт и dev-публикация. На каждый `push` в `main` и `dev`: ruff и pytest в Docker. Если тесты зелёные и в сообщении последнего коммита есть маркер `[prerelease]` (push в `dev`) — собираются и публикуются dev-образы `:dev` / `:dev-cuda`. То же можно запустить вручную через `workflow_dispatch` → `publish_dev`. `pull_request` намеренно не триггерит (иначе push в `dev` + открытый PR `dev→main` гоняли пайплайн дважды).
+- **publish.yml** (**Publish Docker image**) — запускается по `workflow_run` после завершения «Lint and test» на `main`, публикует только при зелёном гейте: `:main` + `:latest` (+ `:main-cuda` / `:latest-cuda` и пиннинг по sha коммита). В Telegram — одно сводное сообщение со статусами CPU и CUDA. Важно: `workflow_run` исполняет `publish.yml` в версии с ветки по умолчанию (`main`).
 
 Схема тегов образов:
 
-| Тег | CPU | CUDA |
-|-----|-----|------|
-| `v1.2.3` (release) | `:1.2.3`, `:main`, `:latest` | `:1.2.3-cuda`, `:main-cuda`, `:latest-cuda` |
-| `v1.2.3-pre.1` (prerelease) | `:1.2.3-pre.1`, `:dev` | `:1.2.3-pre.1-cuda`, `:dev-cuda` |
+| Триггер | CPU | CUDA |
+|---------|-----|------|
+| push в `dev` с `[prerelease]` | `:dev`, `:<sha>` | `:dev-cuda`, `:<sha>-cuda` |
+| зелёный гейт на `main` | `:main`, `:latest`, `:<sha>` | `:main-cuda`, `:latest-cuda`, `:<sha>-cuda` |
 
-Перед первым push: в настройках репозитория разрешите **Read and write** для `GITHUB_TOKEN` (пакеты GHCR + тег). Опционально: `TELEGRAM_TOKEN`, `TELEGRAM_TO`.
+Перед первым push: в настройках репозитория разрешите **Read and write** для `GITHUB_TOKEN` (пакеты GHCR). Опционально: `TELEGRAM_TOKEN`, `TELEGRAM_TO`.
 
 GPU-образ (`Dockerfile.cuda`) публикуется вместе с CPU тем же тегом; базовый `pytorch/*cuda*` существует только для `linux/amd64`, поэтому без arm64-варианта.
 
